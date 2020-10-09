@@ -1,0 +1,139 @@
+---
+title: "Movement Classification"
+author: "Niyazi Ülke"
+date: "06/10/2020"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Overview
+
+This is a course project from Coursera Reproducible Research MOOC by JHU. In this project, data from accelometers on the belt, forearm, arm and dumbell of 6 participants will be used. Source of data is :
+&nbsp;
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har 
+
+and detailed information can be found at the link. The aim is to predict how well the participants do some physical activites. __"classe"__ variable stores this information. This is a classification problem.
+
+## Data Exploration 
+
+Import caret library and download the files if it is needed. Read csv files.
+```{r}
+library(caret)
+if(!file.exists("pml-training.csv")){
+  download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile="pml-training.csv")
+}
+
+if(!file.exists("pml-testing.csv")){
+  download.file(url = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile="pml-testing.csv")
+}  
+
+unPartitionedSet = read.csv(file = "pml-training.csv" ,stringsAsFactors =T,header = T)
+testingSet = read.csv(file = "pml-testing.csv", stringsAsFactors =T, header = T)
+
+```
+
+Print sizes of the data sets.
+```{r}
+dim(unPartitionedSet)
+dim(testingSet)
+```
+
+Investigate NA values.
+
+```{r}
+naControl = colSums(is.na(unPartitionedSet))
+unique(naControl)
+```
+
+## Data Preprocessing
+
+Columns contain either 0 or 19216 NA values. Columns which contain NA's must be excluded from the data.
+Also the first 7 variables are not related to our model. They contain generic knowledge.
+
+```{r}
+unPartitionedSet = unPartitionedSet[, -c(1:7)]
+unPartitionedSet = unPartitionedSet[, colSums(is.na(unPartitionedSet))==0]
+```
+
+Create data partition with 70%.
+```{r}
+set.seed(111)
+trainIndices = createDataPartition(unPartitionedSet$classe,p=0.7)[[1]]
+trainingSet = unPartitionedSet[trainIndices,]
+validationSet = unPartitionedSet[-trainIndices,]
+```
+
+Variables with little variance do not have significant impact.
+They should be excluded from training set.
+
+```{r}
+lowVar = nearZeroVar(trainingSet)
+trainingSet = trainingSet[,-lowVar]
+```
+
+Check new dimensions.
+
+```{r}
+dim(trainingSet)
+```
+With data preparation, number of variables in training set is reduced from 160 to 53
+
+&nbsp;
+
+Examine the classe variable. (The project aims to predict it).
+```{r}
+str(trainingSet$classe)
+```
+
+```{r}
+table(trainingSet$classe)
+```
+## Applying Machine Learning Algorithms
+
+Threefold cross validation will be applied.
+```{r}
+threefold = trainControl(method="cv", number=3, verboseIter=FALSE)
+```
+
+### KNN
+```{r, cache=TRUE}
+set.seed(333)
+knnModel = train(classe ~ ., data = trainingSet, method = "knn", trControl=threefold)
+predictKnn = predict(knnModel, newdata=validationSet)
+confusionMatrix(predictKnn, as.factor(validationSet$classe))
+```
+This model has 91% accuracy.
+
+### Decision Tree
+```{r, cache=TRUE}
+set.seed(333)
+decisionTreeModel = train(classe ~ ., data=trainingSet, method="ctree", trControl=threefold)
+predictDecisionTree = predict(decisionTreeModel, newdata=validationSet)
+confusionMatrix(predictDecisionTree, as.factor(validationSet$classe))
+```
+This model has 91% accuracy too.
+
+### Random Forest
+
+Train random forest with 100 trees.
+```{r, cache=TRUE}
+set.seed(333)
+randomForestModel = train(classe ~ ., data=trainingSet, method="rf", ntree=100 ,trControl=threefold)
+predictRandomForest = predict(randomForestModel$finalModel, newdata=validationSet)
+confusionMatrix(predictRandomForest, as.factor(validationSet$classe))
+
+```
+
+Random forest has the highest accuracy with 99% . This model will be used for predicting the test set.
+
+## Predicting
+```{r}
+predict(randomForestModel, newdata = testingSet)
+
+```
+
+The results are predictions on test set. This model is 100% successful at predicting the test set. Note: The test set does not contain __'classe'__  variable to compare, there is a quiz in the MOOC to examine actual values.
